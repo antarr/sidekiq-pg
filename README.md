@@ -62,19 +62,43 @@ Create an initializer `config/initializers/sidekiq_pg.rb`:
 require 'sidekiq/pg'
 
 Sidekiq::Pg.configure do |config|
-  config.database_url = Rails.application.config.database_url || 
-                       "postgres://localhost/#{Rails.application.class.module_parent_name.underscore}_#{Rails.env}"
+  config.database_url = ENV.fetch('DATABASE_URL', 'postgres://postgres:postgres@postgres:5432/sidekiq_db')
   config.pool_size = ENV.fetch('SIDEKIQ_PG_POOL_SIZE', 5).to_i
 end
+```
 
-# Replace Sidekiq's default Redis client with PostgreSQL adapter
+Create/update your main Sidekiq initializer `config/initializers/sidekiq.rb`:
+
+```ruby
+require 'sidekiq/web'
+require 'sidekiq-unique-jobs'
+require 'sidekiq/worker_killer'
+
 Sidekiq.configure_server do |config|
-  config.redis = { adapter: Sidekiq::Pg::Adapter.new }
+  config.redis = { adapter: Sidekiq::Pg::Adapter.new(database_url: ENV.fetch('DATABASE_URL', 'postgres://postgres:postgres@postgres:5432/sidekiq_db')) }
+  config[:dead_max_jobs] = 100_000
+
+  config.client_middleware do |chain|
+    chain.add SidekiqUniqueJobs::Middleware::Client
+  end
+
+  config.server_middleware do |chain|
+    chain.add SidekiqUniqueJobs::Middleware::Server
+    chain.add Sidekiq::WorkerKiller, max_rss: 2048
+  end
+
+  SidekiqUniqueJobs::Server.configure(config)
 end
 
 Sidekiq.configure_client do |config|
-  config.redis = { adapter: Sidekiq::Pg::Adapter.new }
+  config.redis = { adapter: Sidekiq::Pg::Adapter.new(database_url: ENV.fetch('DATABASE_URL', 'postgres://postgres:postgres@postgres:5432/sidekiq_db')) }
+
+  config.client_middleware do |chain|
+    chain.add SidekiqUniqueJobs::Middleware::Client
+  end
 end
+
+Sidekiq.strict_args!(false)
 ```
 
 Create your workers as usual:
@@ -99,8 +123,44 @@ MyWorker.perform_async('arg1', 'arg2')
 
 You can configure the gem using environment variables:
 
-- `DATABASE_URL`: PostgreSQL connection string
+- `DATABASE_URL`: PostgreSQL connection string (e.g., `postgres://postgres:postgres@postgres:5432/sidekiq_db`)
 - `SIDEKIQ_PG_POOL_SIZE`: Connection pool size (default: 5)
+
+### Docker/Container Setup
+
+For containerized environments, ensure your PostgreSQL container is accessible:
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  app:
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/sidekiq_db
+    depends_on:
+      - postgres
+  
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wevote_development
+```
+
+Create the sidekiq database:
+
+```bash
+PGPASSWORD=postgres psql -h postgres -U postgres -c "CREATE DATABASE sidekiq_db;"
+```
+
+### Important Configuration Notes
+
+1. **Database URL Parameter**: Pass the `database_url` parameter directly to the adapter constructor to ensure proper connection routing in containerized environments.
+
+2. **Separate Database**: It's recommended to use a separate database for Sidekiq jobs to avoid conflicts with your main application database.
+
+3. **Connection Configuration**: The adapter uses the configuration from `Sidekiq::Pg.configure` by default, but you can override it by passing parameters directly to the constructor.
 
 ## Features
 
