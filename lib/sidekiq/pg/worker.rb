@@ -50,8 +50,8 @@ module Sidekiq
       rescue SecurityError => e
         puts "Security Error: #{e.message}"
       rescue => e
-        puts "Error processing job: #{e.message}"
-        puts e.backtrace
+        Sidekiq.logger.error("Error processing job: #{e.message}")
+        Sidekiq.logger.error(e.backtrace.join("\n"))
       end
 
       private
