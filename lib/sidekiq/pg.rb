@@ -15,6 +15,14 @@ module Sidekiq
         yield self if block_given?
       end
 
+      def permitted_classes
+        @permitted_classes ||= []
+      end
+
+      def permitted_classes=(classes)
+        @permitted_classes = classes
+      end
+
       def database_url
         @database_url ||= ENV['DATABASE_URL'] || 'postgres://localhost/sidekiq_pg'
       end
