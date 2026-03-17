@@ -43,8 +43,8 @@ module Sidekiq
         worker = job_class.new
         worker.perform(*job['args'])
       rescue => e
-        puts "Error processing job: #{e.message}"
-        puts e.backtrace
+        Sidekiq.logger.error("Error processing job: #{e.message}")
+        Sidekiq.logger.error(e.backtrace.join("\n"))
       end
     end
   end
