@@ -11,6 +11,8 @@ require_relative 'pg/worker'
 module Sidekiq
   module Pg
     class << self
+      attr_writer :database_url, :pool_size
+
       def configure
         yield self if block_given?
       end
@@ -19,16 +21,8 @@ module Sidekiq
         @database_url ||= ENV['DATABASE_URL'] || 'postgres://localhost/sidekiq_pg'
       end
 
-      def database_url=(url)
-        @database_url = url
-      end
-
       def pool_size
         @pool_size ||= 5
-      end
-
-      def pool_size=(size)
-        @pool_size = size
       end
     end
   end
