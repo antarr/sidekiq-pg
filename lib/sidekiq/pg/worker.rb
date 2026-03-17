@@ -39,12 +39,38 @@ module Sidekiq
       end
 
       def process_job(job)
-        job_class = Object.const_get(job['class'])
+        class_name = job['class']
+        unless permitted_class?(class_name)
+          raise SecurityError, "Unpermitted worker class: #{class_name}"
+        end
+
+        job_class = Object.const_get(class_name)
         worker = job_class.new
         worker.perform(*job['args'])
+      rescue SecurityError => e
+        puts "Security Error: #{e.message}"
       rescue => e
         puts "Error processing job: #{e.message}"
         puts e.backtrace
+      end
+
+      private
+
+      def permitted_class?(class_name)
+        return true if Sidekiq::Pg.permitted_classes.include?(class_name)
+
+        # If no permitted classes are defined, we check if the class includes Sidekiq::Worker
+        # this is a reasonable default but still more secure than arbitrary instantiation.
+        if Sidekiq::Pg.permitted_classes.empty?
+          begin
+            klass = Object.const_get(class_name)
+            return klass.is_a?(Class) && (klass.include?(Sidekiq::Worker) || (defined?(Sidekiq::Job) && klass.include?(Sidekiq::Job)))
+          rescue NameError
+            return false
+          end
+        end
+
+        false
       end
     end
   end
