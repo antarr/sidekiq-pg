@@ -30,7 +30,7 @@ module Sidekiq
         job['jid']
       end
 
-      def pop(queue, timeout = 1)
+      def pop(queue)
         @pool.with do |conn|
           result = conn.exec_params(
             'DELETE FROM sidekiq_jobs WHERE id = (
